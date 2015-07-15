@@ -16,7 +16,7 @@ import time
 from scipy.optimize import minimize
 
 ### initialize  ###
-dt_start = dt.datetime(2013, 1, 1)
+dt_start = dt.datetime(2010, 7, 1)
 dt_end = dt.datetime(2015, 1, 1)
 
 #Initialize daily timestamp: closing prices, so timestamp should be hours=16 (STL)
@@ -39,10 +39,12 @@ benchmark = 'SPY'
 '''
 def calcStats(na_normalized_price, lf_allocations):
     #Calculate cumulative daily portfolio value
-    #row-wise multiplication by weights
+   	#   Multiply each column by the allocation to the corresponding equity
+	#   Sum each row for each day. That is your cumulative daily portfolio value
     na_weighted_price = na_normalized_price * lf_allocations;
-    #row-wise sum
     na_portf_value = na_weighted_price.copy().sum(axis=1);
+
+    f_portf_cumrets = np.cumprod(na_portf_value + 1)
 
     #Calculate daily returns on portfolio
     # Calculate the daily returns of the prices. (Inplace calculation)
@@ -61,20 +63,86 @@ def calcStats(na_normalized_price, lf_allocations):
     #	Calculate portfolio sharpe ratio (avg portfolio return / portfolio stdev) * sqrt(252)
     f_portf_sharpe = (f_portf_avgret / f_portf_volatility) * np.sqrt(252);
 
-	# Cumulative return of the total portfolio
-    #	Calculate cumulative daily return
-    #	...using recursive function
-    def cumret(t, lf_returns):
-        #base-case
-        if t==0:
-            return (1 + lf_returns[0]);
-        #continuation
-        return (cumret(t-1, lf_returns) * (1 + lf_returns[t]));
-    f_portf_cumrets = cumret(na_portf_rets.size - 1, na_portf_rets);
-
     return [f_portf_volatility, f_portf_avgret, f_portf_sharpe, f_portf_cumrets, na_portf_value];
 
+    
+'''
+' Buy or sell according to bollinger bands?
+' @param 
+' @return dataframe of stocks to trade on tradeDate
+'''
+def stocksToTradeAccordingToBollingerBands( ls_allsymbols, marketsymbol, startDate, tradeDate ):
+    ROLLING_WINDOW = 20;
+    N_STD_FACTOR = 2;
+    
+    # Create empty dataframe
+    df_columns = ['equity', 'order']
+    df = pd.DataFrame(columns = df_columns)
 
+    
+    ldt_timestamps = du.getNYSEdays(startDate, tradeDate, dt.timedelta(hours=16));
+
+    ls_allsymbols.append(marketsymbol)
+    ls_keys = ['open', 'high', 'low', 'close', 'volume', 'actual_close'];
+    ldf_data_symbols = dataobj.get_data(ldt_timestamps, ls_allsymbols, ls_keys);
+    d_data_symbols = dict(zip(ls_keys, ldf_data_symbols));
+    ls_allsymbols.remove(marketsymbol)
+    
+    closingPrices = d_data_symbols['actual_close'];
+
+    # Calculate rolling mean and rolling std for the market
+    market_close_price = closingPrices[marketsymbol];
+    market_rolling_mean = pd.rolling_mean(market_close_price, window=ROLLING_WINDOW);
+    market_rolling_std = pd.rolling_std(market_close_price, window=ROLLING_WINDOW);
+
+    # Calculate normalized Bollinger values for the market
+    market_norm_bvals = (market_close_price - market_rolling_mean) / (market_rolling_std * N_STD_FACTOR);
+    
+    market_norm_bval_today = market_norm_bvals[tradeDate];
+
+    for s_sym in ls_allsymbols:
+
+        # Calculate rolling mean and rolling std for the symbol
+        close_price = closingPrices[s_sym];
+        rolling_mean = pd.rolling_mean(close_price, window=ROLLING_WINDOW);
+        rolling_std = pd.rolling_std(close_price, window=ROLLING_WINDOW);
+
+        # Calculate normalized Bollinger values for the symbol
+        norm_bvals = (close_price - rolling_mean) / (rolling_std * N_STD_FACTOR);
+        
+        # Calculating the Bollinger values
+        norm_bval_today = norm_bvals.ix[tradeDate];
+        daybefore = du.getPrevNYSEday(tradeDate);
+        norm_bval_yest = norm_bvals.ix[daybefore];
+        
+#        # Calculate upper and lower Bollinger bands
+#        upper_bollinger = rolling_mean + rolling_std * N_STD_FACTOR;
+#        lower_bollinger = rolling_mean - rolling_std * N_STD_FACTOR;
+        
+        #current price < rolling mean -> down trend
+        #current price > rolling mean -> up trend
+        
+        #current price < lower bollinger band -> potential buy signal
+        #current price > upper band -> Can expect a decline soon.
+        
+        if norm_bval_yest >= -1 and norm_bval_today < -1:
+            #potential buy
+            row = pd.DataFrame([{'equity': s_sym, 'order': 'Buy'}]);
+            df = df.append(row);
+            
+        if norm_bval_yest <= 1 and norm_bval_today > 1:
+            #potential sell
+            row = pd.DataFrame([{'equity': s_sym, 'order': 'Sell'}]);
+            df = df.append(row);
+        
+        
+#        if norm_bval_yest >= -2 and norm_bval_today <= -2 and market_norm_bval_today >= 1:
+#			row = pd.DataFrame([{'equity': s_sym, 'order': 'Buy'}]);
+#            df = df.append(row);
+    
+    return df;
+
+            
 ls_keys = ['open', 'high', 'low', 'close', 'volume', 'actual_close']
 ldf_data_symbols = dataobj.get_data(dt_timestamps, ls_symbols, ls_keys)
 d_data_symbols = dict(zip(ls_keys, ldf_data_symbols))
@@ -92,6 +160,7 @@ df_close_symbols = d_data_symbols['actual_close']
 
 close_data_benchmark = d_data_benchmark['close'].values
 
+
 # print plot of benchmark closing price over specified date range
 #plt.clf()
 #plt.plot(dt_timestamps, close_data_benchmark)
@@ -100,6 +169,18 @@ close_data_benchmark = d_data_benchmark['close'].values
 #plt.xlabel('Date')
 #plt.savefig('adjustedclose_benchmark.pdf', format='pdf')  
 
+
+#tradeDate = dt.date.today()    # date object for today
+tradeDate =  dt.date(2011, 2, 2);
+tradeRange = du.getNYSEdays(dt_start, tradeDate, dt.timedelta(hours=16))
+
+
+for i in range(1, len(tradeRange)):
+    trade_df = stocksToTradeAccordingToBollingerBands( ls_symbols, benchmark, tradeRange[0], tradeRange[i] );
+    if not trade_df.empty:
+        print str(tradeRange[i]);
+        print trade_df;
+    
 
 #
 # Iterate for investing
@@ -110,6 +191,7 @@ cash_wealth = initial_wealth
 for equity in ls_symbols:
 	shares[equity] = 0
 j = 0
+
 for i in range(len(dt_timestamps)):
 	# while ldt_timestamps[i].date() == orders['date'][j]:
 		# current_shares = orders['shares'][j]
