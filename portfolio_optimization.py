@@ -221,12 +221,12 @@ def tradeOrders( orders, cash_wealth, shares, close_prices, indexOfDay ):
 
     
 ### initialize  ###
-dt_start = dt.datetime(2010, 7, 1);
-tradeDate =  dt.date(2011, 2, 4);
+dt_start = dt.datetime(2011, 7, 1);
+tradeDate =  dt.date(2012, 10, 4);
 #tradeDate = dt.date.today()
 
 dataobj = da.DataAccess('Yahoo');
-ls_symbols = ['CSC', 'CSCO', 'CHRW'];
+ls_symbols = ['CSC', 'CSX', 'CHRW'];
 
 initial_wealth = 10000;
 benchmark = 'SPY';
@@ -252,12 +252,15 @@ df_close_symbols = d_data_symbols['actual_close']
 close_data_benchmark = d_data_benchmark['close'].values
 
 
-plt.clf()
-plt.plot(tradeRange, df_close_symbols)
-plt.legend(ls_symbols)
-plt.ylabel('Adjusted Close')
-plt.xlabel('Date')
-plt.savefig('adjustedclose.pdf', format='pdf')  
+
+na_price = d_data_symbols['actual_close'].values;
+normalized_prices = na_price / na_price[0, :];
+plt.clf();
+plt.plot(tradeRange, normalized_prices);
+plt.legend(ls_symbols);
+plt.ylabel('Adjusted Close');
+plt.xlabel('Date');
+plt.savefig('adjustedclose.pdf', format='pdf');
 
 
 
@@ -334,7 +337,7 @@ print "Benchmark Sharpe ratio: " + str(benchmark_sharpe)
 #portfolio
 print ""
 print "### portfolio ###"
-print "Total return (portfolio): " + str(wealth_history[len(wealth_history) - 1] / initial_wealth)
+print "Total return (portfolio): " + str(wealth_history_vector[-1])
 print "Portfolio daily return: " + str(portfolio_avg_daily_ret)
 print "Portfolio standard deviation: " + str(portfolio_std_dev)
 print "Portfolio Sharpe ratio: " + str(portfolio_sharpe)
