@@ -15,20 +15,6 @@ import matplotlib.pyplot as plt
 import time
 from scipy.optimize import minimize
 
-### initialize  ###
-dt_start = dt.datetime(2010, 7, 1)
-dt_end = dt.datetime(2015, 1, 1)
-
-#Initialize daily timestamp: closing prices, so timestamp should be hours=16 (STL)
-dt_timestamps = du.getNYSEdays(dt_start, dt_end, dt.timedelta(hours=16))
-
-dataobj = da.DataAccess('Yahoo')
-ls_symbols = ['CSC']
-
-initial_wealth = 10000
-benchmark = 'SPY'
-### ###
-
 
 '''
 ' Calculate Portfolio Statistics 
@@ -67,12 +53,13 @@ def calcStats(na_normalized_price, lf_allocations):
 
     
 '''
-' Buy or sell according to bollinger bands?
+' Buy or sell according to signals?
 ' @param 
 ' @return dataframe of stocks to trade on tradeDate
 '''
-def stocksToTradeAccordingToBollingerBands( ls_allsymbols, marketsymbol, startDate, tradeDate ):
+def stocksToTrade( ls_allsymbols, marketsymbol, startDate, tradeDate ):
     ROLLING_WINDOW = 20;
+    LONG_ROLLING_WINDOW = 50;
     N_STD_FACTOR = 2;
     
     # Create empty dataframe
@@ -102,29 +89,85 @@ def stocksToTradeAccordingToBollingerBands( ls_allsymbols, marketsymbol, startDa
 
     for s_sym in ls_allsymbols:
 
-        # Calculate rolling mean and rolling std for the symbol
+        # Calculate (simple moving average) rolling mean and rolling std for the symbol
         close_price = closingPrices[s_sym];
         rolling_mean = pd.rolling_mean(close_price, window=ROLLING_WINDOW);
         rolling_std = pd.rolling_std(close_price, window=ROLLING_WINDOW);
-
+        
+        # Moving Average Convergence Divergence (MACD)
+        # Looks at difference between two moving averages (one short and one long).
+        # Uses an EMA (exponential moving average) period. 
+        emaSlow = pd.ewma(close_price, span=26);    # long
+        emaFast = pd.ewma(close_price, span=12);    # short
+        macd = emaFast - emaSlow;
+        ema9 = pd.ewma(macd, span=9);        # EMA for short - long
+        
+        # Calculate long moving average
+        long_rolling_mean = pd.rolling_mean(close_price, window=LONG_ROLLING_WINDOW);
+        
         # Calculate normalized Bollinger values for the symbol
         norm_bvals = (close_price - rolling_mean) / (rolling_std * N_STD_FACTOR);
         
         # Calculating the Bollinger values
+        # > 1 -> above upper Bollinger band
+        # < -1 -> below lower Bollinger band
         norm_bval_today = norm_bvals.ix[tradeDate];
         daybefore = du.getPrevNYSEday(tradeDate);
         norm_bval_yest = norm_bvals.ix[daybefore];
         
-#        # Calculate upper and lower Bollinger bands
-#        upper_bollinger = rolling_mean + rolling_std * N_STD_FACTOR;
-#        lower_bollinger = rolling_mean - rolling_std * N_STD_FACTOR;
+        sell = False;
+        buy = False;
         
-        #current price < rolling mean -> down trend
-        #current price > rolling mean -> up trend
+        # Simple moving average
+        #current price < simple moving average(rolling mean) -> down trend
+        #current price > simple moving average(rolling mean) -> up trend
+        if close_price[tradeDate] > rolling_mean[tradeDate] and close_price[daybefore] < rolling_mean[daybefore]:
+            # up trend
+            buy = True;
         
+        if close_price[tradeDate] < rolling_mean[tradeDate] and close_price[daybefore] > rolling_mean[daybefore]:
+            # down trend
+            sell = True;
+        
+        
+        # Long Simple Moving Average & Short Simple Moving average
+        if rolling_mean[tradeDate] > long_rolling_mean[tradeDate] and rolling_mean[daybefore] <= long_rolling_mean[daybefore]:
+            # up trend
+            buy = True;
+        
+        if rolling_mean[tradeDate] < long_rolling_mean[tradeDate] and rolling_mean[daybefore] >= long_rolling_mean[daybefore]:
+            # down trend
+            sell = True;
+        
+        
+        # MACD
+        # A buying signal is gotten from MACD when the MACD line crosses the 9-day trigger EMA. 
+        # when the MACD falls below the signal line, it is a bearish signal, which indicates that it may be time to sell
+        if macd[tradeDate] > ema9[tradeDate] and macd[daybefore] <= ema9[daybefore]:
+            # buy
+            buy = True;
+        if macd[tradeDate] < ema9[tradeDate] and macd[daybefore] >= ema9[daybefore]:
+            # sell
+            sell = True;
+        # When the MACD is above zero, the short-term average is above the long-term average, which signals upward momentum. The opposite is true when the MACD is below zero.
+        if macd[tradeDate] > 0:
+            # upward trend
+            buy = True;
+        if macd[tradeDate] < 0:
+            # downward trend
+            sell = True;
+        # Buy signal when fast crosses above slow average. Fast moving average goes down under slow -> sell signal.
+        if emaSlow[tradeDate] < emaFast[tradeDate] and emaSlow[daybefore] >= emaFast[daybefore]:
+            # buy
+            buy = True;
+        if emaSlow[tradeDate] > emaFast[tradeDate] and emaSlow[daybefore] <= emaFast[daybefore]:
+            # sell
+            sell = True;
+        
+
+        # Bollinger bands
         #current price < lower bollinger band -> potential buy signal
         #current price > upper band -> Can expect a decline soon.
-        
         if norm_bval_yest >= -1 and norm_bval_today < -1:
             #potential buy
             row = pd.DataFrame([{'equity': s_sym, 'order': 'Buy'}]);
@@ -136,18 +179,66 @@ def stocksToTradeAccordingToBollingerBands( ls_allsymbols, marketsymbol, startDa
             df = df.append(row);
         
         
-#        if norm_bval_yest >= -2 and norm_bval_today <= -2 and market_norm_bval_today >= 1:
-#			row = pd.DataFrame([{'equity': s_sym, 'order': 'Buy'}]);
-#            df = df.append(row);
-    
     return df;
 
+'''
+' Buy or sell according orders in data frame
+' @param 
+' @return 
+'''
+def tradeOrders( orders, cash_wealth, shares, close_prices, indexOfDay ):
+    for index, row in orders.iterrows():
+        # don't access row directly 
+        vals = row.values;
+        equity = vals[0];
+        order = vals[1];
+        
+        
+        price = close_prices[equity][indexOfDay];
+        
+        if order == 'Buy':
+            # only buy if enough cash
+            order_nr_of_shares = 100;
+            order_size = order_nr_of_shares*price;
+            if cash_wealth > order_size:
+                #print "buy at " + str(price);
+                shares[equity] += order_nr_of_shares;
+                cash_wealth -= order_nr_of_shares*price;
+        
+        if order == 'Sell':
+            # add some logic about how many to sell?
+            #order_nr_of_shares = 100;   
+            #shares[equity] -= order_nr_of_shares;
+            # for now sell all of it
+            #print "sell at " + str(price);
+            if shares[equity] > 0:
+                cash_wealth += shares[equity]*price;
+                shares[equity] = 0;
             
+    
+    return (shares, cash_wealth);
+    
+
+    
+### initialize  ###
+dt_start = dt.datetime(2010, 7, 1);
+tradeDate =  dt.date(2011, 2, 4);
+#tradeDate = dt.date.today()
+
+dataobj = da.DataAccess('Yahoo');
+ls_symbols = ['CSC', 'CSCO', 'CHRW'];
+
+initial_wealth = 10000;
+benchmark = 'SPY';
+### ###
+    
+tradeRange = du.getNYSEdays(dt_start, tradeDate, dt.timedelta(hours=16));
+    
 ls_keys = ['open', 'high', 'low', 'close', 'volume', 'actual_close']
-ldf_data_symbols = dataobj.get_data(dt_timestamps, ls_symbols, ls_keys)
+ldf_data_symbols = dataobj.get_data(tradeRange, ls_symbols, ls_keys)
 d_data_symbols = dict(zip(ls_keys, ldf_data_symbols))
 
-ldf_data_benchmark = dataobj.get_data(dt_timestamps, [benchmark], ['close'])
+ldf_data_benchmark = dataobj.get_data(tradeRange, [benchmark], ['close'])
 d_data_benchmark = dict(zip(['close'], ldf_data_benchmark))
 
 for s_key in ls_keys:
@@ -161,63 +252,57 @@ df_close_symbols = d_data_symbols['actual_close']
 close_data_benchmark = d_data_benchmark['close'].values
 
 
-# print plot of benchmark closing price over specified date range
-#plt.clf()
-#plt.plot(dt_timestamps, close_data_benchmark)
-#plt.legend(benchmark)
-#plt.ylabel('Adjusted Close')
-#plt.xlabel('Date')
-#plt.savefig('adjustedclose_benchmark.pdf', format='pdf')  
+plt.clf()
+plt.plot(tradeRange, df_close_symbols)
+plt.legend(ls_symbols)
+plt.ylabel('Adjusted Close')
+plt.xlabel('Date')
+plt.savefig('adjustedclose.pdf', format='pdf')  
 
 
-#tradeDate = dt.date.today()    # date object for today
-tradeDate =  dt.date(2011, 2, 2);
-tradeRange = du.getNYSEdays(dt_start, tradeDate, dt.timedelta(hours=16))
-
-
-for i in range(1, len(tradeRange)):
-    trade_df = stocksToTradeAccordingToBollingerBands( ls_symbols, benchmark, tradeRange[0], tradeRange[i] );
-    if not trade_df.empty:
-        print str(tradeRange[i]);
-        print trade_df;
-    
 
 #
-# Iterate for investing
+# Initialize investing
 #
+cash_wealth = initial_wealth;
 shares = {}
-wealth_history = [None] * len(dt_timestamps)
-cash_wealth = initial_wealth
 for equity in ls_symbols:
-	shares[equity] = 0
-j = 0
+    shares[equity] = 0;
 
-for i in range(len(dt_timestamps)):
-	# while ldt_timestamps[i].date() == orders['date'][j]:
-		# current_shares = orders['shares'][j]
-		# current_equity = orders['equity'][j]
-		# current_order =  orders['order'][j]
-		# if current_order == 'Buy':
-			# shares[current_equity] += current_shares
-			# cash_wealth -= current_shares*close_dataframe[current_equity][i]
-		# if current_order == 'Sell':
-			# shares[current_equity] -= current_shares
-			# cash_wealth += current_shares*close_dataframe[current_equity][i]
-		# j += 1
-		# if j == len(orders):
-			# break
-	invested_wealth = 0
-	# for equity in symbols:
-		# invested_wealth += close_dataframe[equity][i]*shares[equity]
-	total_wealth = invested_wealth + cash_wealth
-	wealth_history[i] = total_wealth
-	# i += 1
 
+# back testing from dt_start until tradeDate
+wealth_history = [None] * len(tradeRange);
+wealth_history[0] = cash_wealth;
+for i in range(1, len(tradeRange)):
+    #print "date: " + str(tradeRange[i]);
+    #print "current shares: " + str(shares[equity]);
+    #print "cash: " + str(cash_wealth);
+    #do any trade
+    trade_df = stocksToTrade( ls_symbols, benchmark, tradeRange[0], tradeRange[i] );
+    if not trade_df.empty:
+        (shares, cash_wealth) = tradeOrders(trade_df, cash_wealth, shares, df_close_symbols, i);
+        #print "shares after trade: " + str(shares[equity]);
+        #print "cash after trade: " + str(cash_wealth);
+    #calculate wealth
+    invested_wealth = 0
+    for equity in shares:
+        #print "invested in " + equity;
+        #print "at current price " + str(df_close_symbols[equity][i]);
+        #print "nr of stocks " + str(shares[equity]);
+        invested_wealth += df_close_symbols[equity][i]*shares[equity];
+    total_wealth = invested_wealth + cash_wealth;
+    #print "total wealth: " + str(total_wealth);
+    wealth_history[i] = total_wealth;
+    
+## to check if invest today, set todays date above in initialization
+#trade_df = stocksToTrade( ls_symbols, benchmark, tradeRange[0], tradeRange[-1] );
+    
 
 #
 # Calculate sharpe ratio for our portfolio and the benchmark
 #
-wealth_history_vector = np.asarray(wealth_history);
+wealth_history_vector = np.asarray(wealth_history, dtype=float);
+wealth_normalized_history = wealth_history_vector / wealth_history_vector[0];
 wealth_history_copy = wealth_history_vector.copy();
 # Calculate the daily returns of the prices. (Inplace calculation)
 # returnize0 works on ndarray and not dataframes.
@@ -235,9 +320,6 @@ benchmark_sharpe = lf_benchmarkStats[2];
 benchmark_std_dev = lf_benchmarkStats[0];
 benchmark_cum_return = lf_benchmarkStats[4];
 
-
-print "Date Range : " + str(dt_start) + " to " + str(dt_end)
-print "Trading days Range : " + str(dt_timestamps[0]) + " to " + str(dt_timestamps[-1])
 
 #benchmark
 print ""
@@ -263,8 +345,8 @@ print "Portfolio Sharpe ratio: " + str(portfolio_sharpe)
 #
 plt.clf()
 plt.setp(plt.xticks()[1], rotation=30)
-plt.plot(dt_timestamps, wealth_history_copy)
-plt.plot(dt_timestamps, benchmark_cum_return);
+plt.plot(tradeRange, wealth_normalized_history)
+plt.plot(tradeRange, benchmark_cum_return);
 plt.legend(['Portfolio', benchmark])
 plt.ylabel('Value')
 plt.xlabel('Date')

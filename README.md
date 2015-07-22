@@ -1,20 +1,13 @@
-# python 
+# TODO
 
-check syntax
-    python -m py_compile <pythonfile>
+Survivor bias?
 
-# PortfolioOptimization
+Implement trade commision.
 
+Do not reinvest dividends!?
+Leave as cash.
 
-### To update csv files with latest data ###
-open cmd window as administrator
-set PATH=%PATH%;"C:\Program Files (x86)\python2.7.3"
-verify symbol that needs to be updated is included in C:\Program Files (x86)\python2.7.3\Lib\site-packages\QSTK\qstktools\symbol.txt
-(I have included S&P 500 index (^GSPC) and all S&P 100 stocks)
-cd "C:\Program Files (x86)\python2.7.3\Lib\site-packages\QSTK\qstktools"
-python.exe YahooDataPull.py
-
-	
+RSI indicator?	
 
 # Estimate portfolio returns
 cummulative daily return formula:
