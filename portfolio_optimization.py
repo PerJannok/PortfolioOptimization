@@ -197,19 +197,16 @@ def tradeOrders( orders, cash_wealth, shares, close_prices, indexOfDay ):
         price = close_prices[equity][indexOfDay];
         
         if order == 'Buy':
-            order_nr_of_shares = 100;
-            
             how_much_to_buy_for = MAX_OF_CASH_TO_TRADE * cash_wealth;
-            how_many_to_buy = how_much_to_buy_for / price;
-            print how_many_to_buy;
+            how_many_to_buy = int(how_much_to_buy_for / price);
             
-            order_size = order_nr_of_shares*price;
+            order_size = how_many_to_buy*price;
             # only buy if enough cash
             if cash_wealth > (order_size + TRADE_COMMISION):
-                #print "buy at " + str(price);
+                print "buy " + str(how_many_to_buy) + " of " + equity + " at " + str(price);
                 cash_wealth -= TRADE_COMMISION;
-                shares[equity] += order_nr_of_shares;
-                cash_wealth -= order_nr_of_shares*price;
+                shares[equity] += how_many_to_buy;
+                cash_wealth -= how_many_to_buy*price;
         
         if order == 'Sell':
             # add some logic about how many to sell?
@@ -217,8 +214,8 @@ def tradeOrders( orders, cash_wealth, shares, close_prices, indexOfDay ):
             #shares[equity] -= order_nr_of_shares;
             
             # for now sell all of it
-            #print "sell at " + str(price);
             if shares[equity] > 0:
+                print "sell all of " + equity + " at " + str(price);
                 cash_wealth += shares[equity]*price;
                 cash_wealth -= TRADE_COMMISION;
                 shares[equity] = 0;
