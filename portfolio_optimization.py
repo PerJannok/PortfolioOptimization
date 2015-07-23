@@ -197,11 +197,17 @@ def tradeOrders( orders, cash_wealth, shares, close_prices, indexOfDay ):
         price = close_prices[equity][indexOfDay];
         
         if order == 'Buy':
-            # only buy if enough cash
             order_nr_of_shares = 100;
+            
+            how_much_to_buy_for = MAX_OF_CASH_TO_TRADE * cash_wealth;
+            how_many_to_buy = how_much_to_buy_for / price;
+            print how_many_to_buy;
+            
             order_size = order_nr_of_shares*price;
-            if cash_wealth > order_size:
+            # only buy if enough cash
+            if cash_wealth > (order_size + TRADE_COMMISION):
                 #print "buy at " + str(price);
+                cash_wealth -= TRADE_COMMISION;
                 shares[equity] += order_nr_of_shares;
                 cash_wealth -= order_nr_of_shares*price;
         
@@ -209,10 +215,12 @@ def tradeOrders( orders, cash_wealth, shares, close_prices, indexOfDay ):
             # add some logic about how many to sell?
             #order_nr_of_shares = 100;   
             #shares[equity] -= order_nr_of_shares;
+            
             # for now sell all of it
             #print "sell at " + str(price);
             if shares[equity] > 0:
                 cash_wealth += shares[equity]*price;
+                cash_wealth -= TRADE_COMMISION;
                 shares[equity] = 0;
             
     
@@ -228,7 +236,10 @@ tradeDate =  dt.date(2012, 10, 4);
 dataobj = da.DataAccess('Yahoo');
 ls_symbols = ['CSC', 'CSX', 'CHRW'];
 
-initial_wealth = 10000;
+initial_wealth = 100000;
+TRADE_COMMISION = 100;
+MAX_OF_CASH_TO_TRADE = 0.2;
+MIN_TRADE_SIZE = 10000;
 benchmark = 'SPY';
 ### ###
     
