@@ -112,7 +112,9 @@ def stocksToTrade( ls_allsymbols, marketsymbol, startDate, tradeDate ):
         # > 1 -> above upper Bollinger band
         # < -1 -> below lower Bollinger band
         norm_bval_today = norm_bvals.ix[tradeDate];
-        daybefore = du.getPrevNYSEday(tradeDate);
+        dt_before_test = tradeDate - dt.timedelta(days=1)
+        timeofday = dt.timedelta(hours=16);
+        daybefore = du.getPrevNNYSEday(dt_before_test, timeofday);
         norm_bval_yest = norm_bvals.ix[daybefore];
         
         sell = False;
@@ -260,16 +262,15 @@ df_close_symbols = d_data_symbols['actual_close']
 close_data_benchmark = d_data_benchmark['close'].values
 
 
-
-na_price = d_data_symbols['actual_close'].values;
-normalized_prices = na_price / na_price[0, :];
-plt.clf();
-plt.plot(tradeRange, normalized_prices);
-plt.legend(ls_symbols);
-plt.ylabel('Adjusted Close');
-plt.xlabel('Date');
-plt.savefig('adjustedclose.pdf', format='pdf');
-
+# ### just to plot the individual closing prices ###
+#na_price = d_data_symbols['actual_close'].values;
+#normalized_prices = na_price / na_price[0, :];
+#plt.clf();
+#plt.plot(tradeRange, normalized_prices);
+#plt.legend(ls_symbols);
+#plt.ylabel('Adjusted Close');
+#plt.xlabel('Date');
+#plt.savefig('adjustedclose.pdf', format='pdf');
 
 
 #
