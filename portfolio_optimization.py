@@ -65,7 +65,7 @@ def stocksToTrade( ls_allsymbols, marketsymbol, startDate, tradeDate ):
     # Create empty dataframe
     df_columns = ['equity', 'order']
     df = pd.DataFrame(columns = df_columns)
-
+    
     
     ldt_timestamps = du.getNYSEdays(startDate, tradeDate, dt.timedelta(hours=16));
 
@@ -75,18 +75,14 @@ def stocksToTrade( ls_allsymbols, marketsymbol, startDate, tradeDate ):
     d_data_symbols = dict(zip(ls_keys, ldf_data_symbols));
     ls_allsymbols.remove(marketsymbol)
     
-    closingPrices = d_data_symbols['actual_close'];
-
-    # Calculate rolling mean and rolling std for the market
-    market_close_price = closingPrices[marketsymbol];
-    market_rolling_mean = pd.rolling_mean(market_close_price, window=ROLLING_WINDOW);
-    market_rolling_std = pd.rolling_std(market_close_price, window=ROLLING_WINDOW);
-
-    # Calculate normalized Bollinger values for the market
-    market_norm_bvals = (market_close_price - market_rolling_mean) / (market_rolling_std * N_STD_FACTOR);
+    print d_data_symbols['actual_close']
     
-    market_norm_bval_today = market_norm_bvals[tradeDate];
+    closingPrices = d_data_symbols['actual_close'];
+    
+    print closingPrices
+    quit()
 
+    
     for s_sym in ls_allsymbols:
 
         # Calculate (simple moving average) rolling mean and rolling std for the symbol
@@ -119,6 +115,7 @@ def stocksToTrade( ls_allsymbols, marketsymbol, startDate, tradeDate ):
         
         sell = False;
         buy = False;
+        
         
         # Simple moving average
         #current price < simple moving average(rolling mean) -> down trend
@@ -228,28 +225,34 @@ def tradeOrders( orders, cash_wealth, shares, close_prices, indexOfDay ):
 
     
 ### initialize  ###
-dt_start = dt.datetime(2011, 7, 1);
-tradeDate =  dt.date(2012, 10, 4);
+dt_start = dt.datetime(1990, 1, 1);
+tradeDate =  dt.date(2002, 1, 1);
 #tradeDate = dt.date.today()
 
 dataobj = da.DataAccess('Yahoo');
-ls_symbols = ['CSC', 'CSX', 'CHRW'];
+ls_symbols = ['AAPL'];
 
 initial_wealth = 100000;
 TRADE_COMMISION = 100;
-MAX_OF_CASH_TO_TRADE = 0.2;
+MAX_OF_CASH_TO_TRADE = 1;
 MIN_TRADE_SIZE = 10000;
-benchmark = 'SPY';
+benchmark = 'AAPL';
 ### ###
     
 tradeRange = du.getNYSEdays(dt_start, tradeDate, dt.timedelta(hours=16));
+
+print "## trade range: " + str(tradeRange[0]) + " - " + str(tradeRange[-1])
     
 ls_keys = ['open', 'high', 'low', 'close', 'volume', 'actual_close']
 ldf_data_symbols = dataobj.get_data(tradeRange, ls_symbols, ls_keys)
 d_data_symbols = dict(zip(ls_keys, ldf_data_symbols))
 
+print d_data_symbols
+
 ldf_data_benchmark = dataobj.get_data(tradeRange, [benchmark], ['close'])
 d_data_benchmark = dict(zip(['close'], ldf_data_benchmark))
+
+print d_data_benchmark
 
 for s_key in ls_keys:
 	d_data_symbols[s_key] = d_data_symbols[s_key].fillna(method='ffill')
@@ -286,7 +289,7 @@ for equity in ls_symbols:
 wealth_history = [None] * len(tradeRange);
 wealth_history[0] = cash_wealth;
 for i in range(1, len(tradeRange)):
-    #print "date: " + str(tradeRange[i]);
+    print "date: " + str(tradeRange[i]);
     #print "current shares: " + str(shares[equity]);
     #print "cash: " + str(cash_wealth);
     #do any trade
@@ -303,7 +306,7 @@ for i in range(1, len(tradeRange)):
         #print "nr of stocks " + str(shares[equity]);
         invested_wealth += df_close_symbols[equity][i]*shares[equity];
     total_wealth = invested_wealth + cash_wealth;
-    #print "total wealth: " + str(total_wealth);
+    print "total wealth: " + str(total_wealth);
     wealth_history[i] = total_wealth;
     
 ## to check if invest today, set todays date above in initialization

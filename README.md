@@ -2,7 +2,7 @@
 
 Survivor bias?
 
-Implement trade commision.
+Implement trade commission.
 
 Do not reinvest dividends!?
 Leave as cash.
